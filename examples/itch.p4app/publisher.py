@@ -15,8 +15,8 @@ addr = (host, port)
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 for i in range(1):
-    print "// sent msg %d" % i
-    msg = AddOrderMessage(Stock='GOOGL', Shares=1)
+    #print "// sent msg %d" % i
+    msg = AddOrderMessage(Stock='GOOGL', Shares=1, Price=2)
     data = MoldPacket(Session=1, SequenceNumber=i, MessagePayloads=[msg])
     s.sendto(data, addr)
 

@@ -37,7 +37,7 @@ net.start()
 
 
 sw = net.get('s1')
-h1, h2 = net.get('h1'), net.get('h2')
+h1, h2, h3 = net.get('h1'), net.get('h2'), net.get('h3')
 
 for i in range(1, n+1):
 
@@ -57,13 +57,18 @@ for entry in runtime_config.entries():
     #print entry['table_name'], entry['match_fields'], entry['action_params'] if 'action_params' in entry else ''
     sw.insertTableEntry(**entry)
 
+for mgid,ports in runtime_config.mcastGroups().iteritems():
+    sw.addMulticastGroup(mgid=mgid, ports=ports)
+
 
 net.pingAll()
 
-subscriber = h1.popen('./subscriber.py 1234', stdout=sys.stdout, stderr=sys.stdout)
+subscriber1 = h1.popen('./subscriber.py 1234', stdout=sys.stdout, stderr=sys.stdout)
+subscriber2 = h2.popen('./subscriber.py 1234', stdout=sys.stdout, stderr=sys.stdout)
 time.sleep(0.2)
 
-print h2.cmd('./publisher.py 10.255.255.255 1234')
+h2.cmd('./publisher.py 10.255.255.255 1234')
 time.sleep(0.2)
 
-subscriber.terminate()
+subscriber1.terminate()
+subscriber2.terminate()

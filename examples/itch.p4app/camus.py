@@ -61,7 +61,6 @@ def parseMcastGroups(mcast_groups_str):
     """ Parse a string of mcast groups to a dictionary """
     groups = {}
     for l in mcast_groups_str.split('\n'):
-        print l
         mgid, ports = l.split(':')
         groups[int(mgid)] = map(int, ports.split())
     return groups
