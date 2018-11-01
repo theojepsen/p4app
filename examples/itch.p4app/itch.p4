@@ -175,12 +175,47 @@ control MyIngress(inout headers hdr,
         default_action = drop();
     }
 
-    apply {
-        if (hdr.add_order.isValid()) {
-            Camus.apply(hdr, standard_metadata);
+    action direction_is_down() { }
+    action direction_is_up() { }
+
+    table packet_direction {
+        key = {
+            standard_metadata.ingress_port: exact;
         }
-        else if (hdr.ipv4.isValid() && hdr.ipv4.ttl > 0) {
-            ipv4_lpm.apply();
+        actions = {
+            direction_is_down;
+            direction_is_up;
+        }
+        size = 128;
+        default_action = direction_is_up();
+    }
+
+    table forward_up {
+        actions = {
+            ipv4_forward;
+            NoAction;
+        }
+        default_action = NoAction();
+    }
+
+    apply {
+        if (hdr.ipv4.isValid()) {
+            if (hdr.ipv4.ttl == 0) {
+                drop();
+            }
+            else {
+                switch(packet_direction.apply().action_run) {
+                    direction_is_down: {
+                        if (hdr.add_order.isValid())
+                            Camus.apply(hdr, standard_metadata);
+                        else
+                            ipv4_lpm.apply();
+                    }
+                    direction_is_up: {
+                        forward_up.apply();
+                    }
+                }
+            }
         }
     }
 }
@@ -193,16 +228,18 @@ control MyEgress(inout headers hdr,
                  inout metadata meta,
                  inout standard_metadata_t standard_metadata) {
 
-    action set_mac(macAddr_t dstAddr) {
-        hdr.ethernet.dstAddr = dstAddr;
+    action set_dst(macAddr_t mac, ip4Addr_t ip) {
+        hdr.ethernet.dstAddr = mac;
+        hdr.ipv4.dstAddr = ip;
+        hdr.udp.checksum = 0;
     }
 
-    table rewrite_mac {
+    table rewrite_dst {
         key = {
             standard_metadata.egress_port: exact;
         }
         actions = {
-            set_mac;
+            set_dst;
             NoAction;
         }
         size = 1024;
@@ -210,8 +247,8 @@ control MyEgress(inout headers hdr,
     }
 
     apply {
-        if (hdr.ethernet.isValid())
-            rewrite_mac.apply();
+        if (hdr.ethernet.isValid() && hdr.ipv4.isValid())
+            rewrite_dst.apply();
     }
 }
 
