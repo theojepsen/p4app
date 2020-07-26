@@ -16,7 +16,7 @@ class SingleSwitchTopo(Topo):
                                 mac = '00:00:00:00:00:%02x' % i)
             self.addLink(host, switch, port2=i)
 
-NUM_NODES = 4
+NUM_NODES = 3
 NUM_CLIENTS = 1
 NUM_HOSTS = NUM_NODES + NUM_CLIENTS
 
@@ -34,19 +34,14 @@ for i in range(1, NUM_HOSTS+1):
                         action_name='MyIngress.set_egr',
                         action_params={'port': i})
 
-#net.pingAll()
-
 node_hosts = [net.get('h%d'%i) for i in range(1, NUM_NODES+1)]
 cl_host = net.get('h%d'%(NUM_NODES+1))
 
 node_procs = [h.popen('./node.py', stdout=sys.stdout, stderr=sys.stdout, stdin=subprocess.PIPE) for h in node_hosts]
 
-time.sleep(0.3)
+time.sleep(0.2) # hack: wait for nodes to be ready
 cl_proc = cl_host.popen('./client.py', stdout=sys.stdout, stderr=sys.stdout, stdin=subprocess.PIPE)
 cl_proc.communicate(input='\n')
 
-time.sleep(1.5)
-
 for p in node_procs:
     p.communicate(input='\n')
-    #p.terminate()

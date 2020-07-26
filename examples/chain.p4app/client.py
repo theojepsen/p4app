@@ -1,54 +1,60 @@
 #!/usr/bin/env python
-import sys
 from scapy.all import *
 from ChainRep_headers import *
+from threading import Thread, Event
+from async_sniff import sniff
 
 IFACE = 'eth0'
-src_mac = get_if_hwaddr(IFACE)
-
-#if len(sys.argv) != 2:
-#    print "Usage: %s DST_IP" % (sys.argv[0],)
-#    sys.exit(1)
-#
-#dst_ip = sys.argv[1]
+my_mac = get_if_hwaddr(IFACE)
+my_ip = get_if_addr(IFACE)
+VERBOSE_SENDP = False
 
 def make_pkt(nodes, op=CHAINREP_OP_READ, key=0, val=0, seq=0):
     assert len(nodes) > 0
     dst_ip = nodes[0]
-    return Ether(dst='00:11:22:33:44:55', src='00:11:22:33:44:56') / \
-            IP(dst=dst_ip) / \
-            ChainRep(nodes=nodes, op=op, seq=seq, key=key, value=val)
+    return Ether(dst='00:11:22:33:44:55', src=my_mac) / \
+            IP(dst=dst_ip, src=my_ip) / \
+            ChainRep(nodes=nodes[1:], op=op, seq=seq, key=key, value=val)
 
-kv_store = {1: 0x11, 2: 0x22}
+
+stop_event = Event()
+packet_received = Event()
+recv = []
 
 def handle_pkt(p):
-    #p.show2()
+    if p.haslayer(Ether) and p[Ether].src == my_mac: return
+    if p.haslayer(IP) and p[IP].src == my_ip: return
     if not p.haslayer(ChainRep): return
-    if p[ChainRep].node_cnt == 0:
-        print "No nodes in chain"
-        return
-    if p[ChainRep].op == CHAINREP_OP_READ:
-        p[IP].dst = p[IP].src
-        p[IP].src = p[ChainRep].nodes[0]
-        p[ChainRep].value = kv_store[p[ChainRep].key]
-        p[ChainRep].nodes = p[ChainRep].nodes[1:]
-        print "Got READ for 0x%x (0x%x) from" % (p[ChainRep].key, p[ChainRep].value), p[IP].src
-        sendp(p, iface=IFACE)
-    elif p[ChainRep].op == CHAINREP_OP_WRITE:
-        kv_store[p[ChainRep].key] = p[ChainRep].value
-        print "Got WRITE for 0x%x (0x%x) from" % (p[ChainRep].key, p[ChainRep].value), p[IP].src
-        if p[ChainRep].node_cnt == 1: # we are at the tail
-            p[IP].src = p[ChainRep].nodes[0]
-            p[IP].dst = p[IP].src
-        else:
-            p[IP].dst = p[ChainRep].nodes[0]
-        p[ChainRep].nodes = p[ChainRep].nodes[1:]
-        sendp(p, iface=IFACE)
-    else:
-        raise Exception("Unknown OP: 0x%x" % p[ChainRep].op)
+    #p.show2()
+    packet_received.set()
+    recv.append(p)
 
+def sniffer(): sniff(iface=IFACE, prn=handle_pkt, stop_event=stop_event)
+sniff_thread = Thread(target=sniffer)
+sniff_thread.start()
 
-p = make_pkt(['10.0.0.1', '10.0.0.2'], op=CHAINREP_OP_WRITE, key=1, val=0xaa)
-sendp(p, iface=IFACE)
+nodes = ['10.0.0.1', '10.0.0.2', '10.0.0.3']
 
-raw_input("Hit any key to exit.")
+p = make_pkt(nodes, op=CHAINREP_OP_WRITE, key=1, val=0xaa)
+sendp(p, iface=IFACE, verbose=VERBOSE_SENDP)
+packet_received.wait()
+packet_received.clear()
+assert recv[0].haslayer(ChainRep)
+assert recv[0][IP].src == nodes[-1]
+assert recv[0][ChainRep].node_cnt == 0
+assert recv[0][ChainRep].key == 1
+assert recv[0][ChainRep].value == 0xaa
+
+p = make_pkt(list(reversed(nodes)), op=CHAINREP_OP_READ, key=1)
+sendp(p, iface=IFACE, verbose=VERBOSE_SENDP)
+packet_received.wait()
+packet_received.clear()
+#recv[1].show()
+assert recv[1].haslayer(ChainRep)
+assert recv[1][IP].src == nodes[-1]
+assert recv[1][ChainRep].node_cnt == 2
+assert recv[1][ChainRep].key == 1
+assert recv[1][ChainRep].value == 0xaa
+
+stop_event.set()
+sniff_thread.join()

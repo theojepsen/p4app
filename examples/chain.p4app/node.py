@@ -1,64 +1,50 @@
 #!/usr/bin/env python
-import sys
 from scapy.all import *
 from ChainRep_headers import *
 from async_sniff import sniff
 from threading import Thread, Event
 
 IFACE = 'eth0'
+my_mac = get_if_hwaddr(IFACE)
+my_ip = get_if_addr(IFACE)
 
-if len(sys.argv) != 1:
-    print "Usage: %s" % (sys.argv[0],)
-    sys.exit(1)
-
-kv_store = {1: 0x11, 2: 0x22}
+my_state = {'seq': 0, 'vals': {1: 0x11, 2: 0x22}}
 
 def handle_pkt(p):
-    #p.show2()
+    if p.haslayer(Ether) and p[Ether].src == my_mac: return
     if not p.haslayer(ChainRep): return
-    if p[ChainRep].node_cnt == 0:
-        print "No nodes in chain"
-        return
+
     if p[ChainRep].op == CHAINREP_OP_READ:
+        print "[%s] READ(0x%x)=0x%x   chain: %s   src: %s)" % (my_ip, p[ChainRep].key, p[ChainRep].value, p[ChainRep].nodes, p[IP].src)
         p[IP].dst = p[IP].src
-        p[IP].src = p[ChainRep].nodes[0]
-        p[ChainRep].value = kv_store[p[ChainRep].key]
-        p[ChainRep].nodes = p[ChainRep].nodes[1:]
-        print "Got READ for 0x%x (0x%x) from" % (p[ChainRep].key, p[ChainRep].value), p[IP].src
-        sendp(p, iface=IFACE)
+        p[IP].src = my_ip
+        p[ChainRep].value = my_state['vals'][p[ChainRep].key]
     elif p[ChainRep].op == CHAINREP_OP_WRITE:
-        kv_store[p[ChainRep].key] = p[ChainRep].value
-        print "Got WRITE for 0x%x (0x%x) from" % (p[ChainRep].key, p[ChainRep].value), p[IP].src
-        if p[ChainRep].node_cnt == 1: # we are at the tail
-            p[IP].src = p[ChainRep].nodes[0]
+        print "[%s] WRITE(0x%x, 0x%x)   seq: %d   chain: %s   src: %s" % (my_ip, p[ChainRep].key, p[ChainRep].value, p[ChainRep].seq, p[ChainRep].nodes, p[IP].src)
+        if p[ChainRep].seq < my_state['seq']: return # drop packet
+        my_state['seq'] = p[ChainRep].seq
+        my_state['vals'][p[ChainRep].key] = p[ChainRep].value
+        if p[ChainRep].node_cnt == 0: # we are at the tail
             p[IP].dst = p[IP].src
+            p[IP].src = my_ip
         else:
-            p[IP].dst = p[ChainRep].nodes[1]
-        # TODO: this does not update the packet correctly
-        p[ChainRep].nodes = p[ChainRep].nodes[1:]
-        p.show()
-        p.show2()
-        sendp(p, iface=IFACE)
+            p[IP].dst = p[ChainRep].nodes[0]
+            p[ChainRep].nodes = p[ChainRep].nodes[1:]
+            p[ChainRep].node_cnt -= 1
     else:
         raise Exception("Unknown OP: 0x%x" % p[ChainRep].op)
 
-
-
-#sniffer = AsyncSniffer(iface=IFACE, prn=handle_pkt)
-#sniffer.start()
+    p[Ether].src = my_mac
+    #p.show2()
+    sendp(p, iface=IFACE, verbose=False)
 
 stop_event = Event()
 
-def sniffer():
-    sniff(iface=IFACE, prn=handle_pkt, stop_event=stop_event)
-
+def sniffer(): sniff(iface=IFACE, prn=handle_pkt, stop_event=stop_event)
 sniff_thread = Thread(target=sniffer)
 sniff_thread.start()
 
-raw_input("Hit any key to exit.")
+raw_input()
+
 stop_event.set()
-
-print "exiting..."
-
-#sniffer.stop()
 sniff_thread.join()
