@@ -17,9 +17,10 @@ class LongIPField(IPField):
 
 class ChainRep(Packet):
     fields_desc=[
-       ShortEnumField("op", 1, {1:"READ", 2:"WRITE"}),
-       ShortField("seq", 0),
-       FieldLenField("node_cnt", None, count_of="nodes", fmt="I"),
+       IPField("client_ip", "0.0.0.0"),
+       ByteEnumField("op", 1, {1:"READ", 2:"WRITE"}),
+       ByteField("seq", 0),
+       FieldLenField("node_cnt", None, count_of="nodes", fmt="H"),
        FieldListField("nodes", ["1.2.3.4"], LongIPField("", "0.0.0.0"),
                        count_from = lambda pkt: pkt.node_cnt),
        XLongField("key", 0),

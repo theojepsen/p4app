@@ -14,7 +14,7 @@ def make_pkt(nodes, op=CHAINREP_OP_READ, key=0, val=0, seq=0):
     dst_ip = nodes[0]
     return Ether(dst='00:11:22:33:44:55', src=my_mac) / \
             IP(dst=dst_ip, src=my_ip) / \
-            ChainRep(nodes=nodes[1:], op=op, seq=seq, key=key, value=val)
+            ChainRep(nodes=nodes[1:], client_ip=my_ip, op=op, seq=seq, key=key, value=val)
 
 
 stop_event = Event()

@@ -15,9 +15,8 @@ def handle_pkt(p):
     if not p.haslayer(ChainRep): return
 
     if p[ChainRep].op == CHAINREP_OP_READ:
-        print "[%s] READ(0x%x)=0x%x   chain: %s   src: %s)" % (my_ip, p[ChainRep].key, p[ChainRep].value, p[ChainRep].nodes, p[IP].src)
-        p[IP].dst = p[IP].src
-        p[IP].src = my_ip
+        print "[%s] READ(0x%x)=0x%x   chain: %s   src: %s" % (my_ip, p[ChainRep].key, p[ChainRep].value, p[ChainRep].nodes, p[IP].src)
+        p[IP].dst = p[ChainRep].client_ip
         p[ChainRep].value = my_state['vals'][p[ChainRep].key]
     elif p[ChainRep].op == CHAINREP_OP_WRITE:
         print "[%s] WRITE(0x%x, 0x%x)   seq: %d   chain: %s   src: %s" % (my_ip, p[ChainRep].key, p[ChainRep].value, p[ChainRep].seq, p[ChainRep].nodes, p[IP].src)
@@ -25,8 +24,7 @@ def handle_pkt(p):
         my_state['seq'] = p[ChainRep].seq
         my_state['vals'][p[ChainRep].key] = p[ChainRep].value
         if p[ChainRep].node_cnt == 0: # we are at the tail
-            p[IP].dst = p[IP].src
-            p[IP].src = my_ip
+            p[IP].dst = p[ChainRep].client_ip
         else:
             p[IP].dst = p[ChainRep].nodes[0]
             p[ChainRep].nodes = p[ChainRep].nodes[1:]
@@ -34,6 +32,7 @@ def handle_pkt(p):
     else:
         raise Exception("Unknown OP: 0x%x" % p[ChainRep].op)
 
+    p[IP].src = my_ip
     p[Ether].src = my_mac
     #p.show2()
     sendp(p, iface=IFACE, verbose=False)
